@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Gridscape — Your GitHub contributions in 3D</title>
+  <meta name="description" content="Turn any GitHub profile into an interactive 3D contribution skyline. Explore streaks, top languages and best days, then share a beautiful card in one click.">
+  <meta name="theme-color" content="#0d1117" media="(prefers-color-scheme: dark)">
+  <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+  <meta name="color-scheme" content="dark light">
+  <meta name="referrer" content="strict-origin-when-cross-origin">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net 'sha256-/neONZNSzp6tDn0DeJDcFsXd9UFJ1+WL9YDmzBCOsTE='; style-src 'self'; img-src 'self' data: blob: https://avatars.githubusercontent.com https://img.shields.io; connect-src 'self' https://api.github.com https://github-contributions-api.jogruber.de https://cdn.jsdelivr.net; manifest-src 'self'; base-uri 'self'; form-action 'self'; object-src 'none'">
+
+  <link rel="canonical" href="https://hjorven.github.io/gridscape/">
+  <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="assets/icon-192.png">
+  <link rel="manifest" href="manifest.webmanifest">
+
+  <!-- Open Graph / social previews -->
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Gridscape">
+  <meta property="og:title" content="Gridscape — Your GitHub contributions in 3D">
+  <meta property="og:description" content="Turn any GitHub profile into a 3D contribution skyline and share it.">
+  <meta property="og:url" content="https://hjorven.github.io/gridscape/">
+  <meta property="og:image" content="https://hjorven.github.io/gridscape/assets/og-image.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="A 3D skyline of GitHub contributions">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Gridscape — Your GitHub contributions in 3D">
+  <meta name="twitter:description" content="Turn any GitHub profile into a 3D contribution skyline and share it.">
+  <meta name="twitter:image" content="https://hjorven.github.io/gridscape/assets/og-image.png">
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "Gridscape",
+    "url": "https://hjorven.github.io/gridscape/",
+    "description": "Turn any GitHub profile into an interactive 3D contribution skyline and share it.",
+    "applicationCategory": "DeveloperApplication",
+    "operatingSystem": "Any",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+  }
+  </script>
+
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+  <link rel="preconnect" href="https://api.github.com" crossorigin>
+  <link rel="preconnect" href="https://github-contributions-api.jogruber.de" crossorigin>
+  <link rel="stylesheet" href="css/style.css">
+
+  <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.187.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.187.0/examples/jsm/"}}</script>
+  <script type="module" src="js/app.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <div class="site-header-wrap">
+  <header class="site-header">
+    <a class="brand" href="./" aria-label="Gridscape home">
+      <img src="assets/favicon.svg" alt="" width="28" height="28">
+      <span>Gridscape</span>
+    </a>
+    <nav class="header-nav" aria-label="Main">
+      <a href="#how">How it works</a>
+      <a href="#faq">FAQ</a>
+      <button class="icon-btn" id="theme-toggle" type="button" aria-label="Toggle light and dark mode" title="Toggle light / dark">
+        <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M12 3a9 9 0 1 0 9 9 7 7 0 0 1-9-9z"/></svg>
+      </button>
+    </nav>
+  </header>
+  </div>
+
+  <main id="main">
+    <section class="hero" aria-labelledby="hero-title">
+      <p class="eyebrow">Your contribution graph, in 3D</p>
+      <h1 id="hero-title">Your commits, <span class="accent">as a skyline.</span></h1>
+      <p class="lede">Paste a GitHub username or profile link. Get an interactive 3D city of your year, your stats, and a card that's actually worth sharing.</p>
+
+      <form id="search-form" class="search" role="search" autocomplete="off" novalidate>
+        <label class="visually-hidden" for="user-input">GitHub username or profile URL</label>
+        <span class="search-field">
+          <span class="search-prefix" aria-hidden="true">github.com/</span>
+          <input id="user-input" name="user" type="text" inputmode="url" spellcheck="false" autocapitalize="off"
+                 placeholder="username or profile link" maxlength="200" required>
+        </span>
+        <button type="submit" class="btn btn-primary" id="search-btn">Build skyline</button>
+      </form>
+      <p class="form-hint" id="form-status" role="status" aria-live="polite"></p>
+
+      <div class="examples" aria-label="Try an example">
+        <span>Try:</span>
+        <button type="button" class="chip" data-example="torvalds">torvalds</button>
+        <button type="button" class="chip" data-example="gaearon">gaearon</button>
+        <button type="button" class="chip" data-example="sindresorhus">sindresorhus</button>
+        <button type="button" class="chip" data-example="yyx990803">yyx990803</button>
+      </div>
+    </section>
+
+    <section id="result" class="result" hidden aria-live="polite">
+      <article class="profile card" id="profile">
+        <img id="p-avatar" class="avatar" alt="" width="88" height="88">
+        <div class="profile-text">
+          <h2 id="p-name"></h2>
+          <a id="p-login" class="login" target="_blank" rel="noopener"></a>
+          <p id="p-bio" class="bio"></p>
+          <ul class="profile-meta" id="p-meta"></ul>
+        </div>
+      </article>
+
+      <div class="viewer-layout">
+      <div>
+      <h2 class="viewer-title" id="viewer-title"></h2>
+      <div class="viewer card">
+        <div class="viewer-toolbar">
+          <div class="viewer-actions">
+            <button class="icon-btn" id="rotate-btn" type="button" aria-pressed="true" title="Auto-rotate" aria-label="Toggle auto-rotate">
+              <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M20 12a8 8 0 1 1-2.3-5.7M20 4v5h-5"/></svg>
+            </button>
+            <button class="icon-btn" id="view2d-btn" type="button" aria-pressed="false" title="Switch 2D / 3D" aria-label="Switch between 2D and 3D">
+              <span class="mono">2D</span>
+            </button>
+            <button class="icon-btn" id="reset-btn" type="button" title="Reset camera" aria-label="Reset camera">
+              <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" d="M4 12h4m8 0h4M12 4v4m0 8v4"/><circle cx="12" cy="12" r="2" fill="currentColor"/></svg>
+            </button>
+            <button class="icon-btn" id="fullscreen-btn" type="button" title="Fullscreen" aria-label="Fullscreen">
+              <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <div class="stage" id="stage">
+          <div class="stage-canvas" id="stage-canvas" aria-label="3D contribution skyline. Drag to rotate, pinch or scroll to zoom." role="img"></div>
+          <div class="grid2d" id="grid2d" hidden></div>
+          <div class="tooltip" id="tooltip" hidden></div>
+          <div class="stage-loading" id="stage-loading" hidden><span class="spinner" aria-hidden="true"></span><span>Raising buildings…</span></div>
+        </div>
+
+        <div class="legend" aria-hidden="true">
+          <span>Drag to rotate · tap a day for details</span>
+          <span class="legend-right"><span>Less</span><span class="legend-swatches" id="legend"></span><span>More</span></span>
+        </div>
+      </div>
+      </div>
+      <div class="years" id="years" role="tablist" aria-label="Select year"></div>
+      </div>
+
+      <section class="stats" aria-label="Contribution statistics">
+        <div class="stat card"><span class="stat-label">Contributions</span><strong class="stat-value" id="s-total">–</strong><span class="stat-sub" id="s-total-sub"></span></div>
+        <div class="stat card"><span class="stat-label">Longest streak</span><strong class="stat-value" id="s-longest">–</strong><span class="stat-sub" id="s-longest-sub"></span></div>
+        <div class="stat card"><span class="stat-label">Current streak</span><strong class="stat-value" id="s-current">–</strong><span class="stat-sub" id="s-current-sub"></span></div>
+        <div class="stat card"><span class="stat-label">Best day</span><strong class="stat-value" id="s-best">–</strong><span class="stat-sub" id="s-best-sub"></span></div>
+        <div class="stat card"><span class="stat-label">Active days</span><strong class="stat-value" id="s-active">–</strong><span class="stat-sub" id="s-active-sub"></span></div>
+        <div class="stat card"><span class="stat-label">Favorite weekday</span><strong class="stat-value" id="s-weekday">–</strong><span class="stat-sub" id="s-weekday-sub"></span></div>
+      </section>
+
+      <div class="split">
+        <section class="card" aria-labelledby="weekday-title">
+          <h3 id="weekday-title">Rhythm of the week</h3>
+          <div class="bars" id="weekday-bars"></div>
+        </section>
+        <section class="card" aria-labelledby="lang-title">
+          <h3 id="lang-title">Top languages</h3>
+          <div class="langbar" id="lang-bar"></div>
+          <ul class="lang-list" id="lang-list"></ul>
+          <p class="muted small" id="lang-note"></p>
+        </section>
+      </div>
+
+      <section class="card" aria-labelledby="repos-title">
+        <h3 id="repos-title">Most starred repositories</h3>
+        <ul class="repos" id="repos"></ul>
+      </section>
+
+      <section class="share card" aria-labelledby="share-title">
+        <h3 id="share-title">Share it</h3>
+        <p class="muted">Your link opens this exact view — same user and year.</p>
+        <div class="share-link">
+          <input id="share-url" type="text" readonly aria-label="Shareable link">
+          <button class="btn" id="copy-link" type="button">Copy link</button>
+        </div>
+        <div class="share-buttons">
+          <button class="btn btn-primary" id="dl-card" type="button">Download share card</button>
+          <button class="btn" id="dl-3d" type="button">Download 3D view</button>
+          <button class="btn" id="native-share" type="button" hidden>Share…</button>
+        </div>
+        <div class="share-socials">
+          <a class="btn btn-ghost" id="share-x" target="_blank" rel="noopener">X</a>
+          <a class="btn btn-ghost" id="share-bsky" target="_blank" rel="noopener">Bluesky</a>
+          <a class="btn btn-ghost" id="share-li" target="_blank" rel="noopener">LinkedIn</a>
+          <a class="btn btn-ghost" id="share-reddit" target="_blank" rel="noopener">Reddit</a>
+        </div>
+        <details class="readme-embed">
+          <summary>Add a badge to your GitHub README</summary>
+          <p class="muted small">Paste this into your profile README. It links to your skyline.</p>
+          <pre><code id="badge-md"></code></pre>
+          <button class="btn" id="copy-badge" type="button">Copy Markdown</button>
+          <p class="badge-preview"><img id="badge-img" alt="Badge preview" height="20"></p>
+        </details>
+      </section>
+    </section>
+
+    <section id="how" class="info" aria-labelledby="how-title">
+      <h2 id="how-title">How it works</h2>
+      <ol class="steps">
+        <li><strong>Enter a profile.</strong> A username, <code>@handle</code> or any github.com link works.</li>
+        <li><strong>We fetch public data.</strong> Profile and repos come from the GitHub API, the contribution calendar from a public contributions API.</li>
+        <li><strong>Your year becomes a city.</strong> Every day is a building, height and color show how much you shipped.</li>
+        <li><strong>Share.</strong> Copy the link, download a card, or drop a badge into your README.</li>
+      </ol>
+    </section>
+
+    <section id="faq" class="info" aria-labelledby="faq-title">
+      <h2 id="faq-title">FAQ</h2>
+      <details><summary>Do I need to log in?</summary><p>No. Only public data is used and nothing is stored on a server. Everything runs in your browser.</p></details>
+      <details><summary>Why don't my private contributions show?</summary><p>Private contributions only count if you enable “Include private contributions on my profile” in your GitHub settings. They then show up as numbers without details.</p></details>
+      <details><summary>The numbers look slightly off.</summary><p>Contribution data is cached for about an hour. Recent commits may take a moment to appear.</p></details>
+      <details><summary>I see “rate limit reached”.</summary><p>The GitHub API allows 60 requests per hour per network without login. Wait a bit — the 3D skyline still works, only languages and repos need the GitHub API.</p></details>
+      <details><summary>Does it work on my phone?</summary><p>Yes. Use one finger to rotate, two to zoom. On older devices you can switch to the 2D view.</p></details>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <p>Gridscape is not affiliated with GitHub, Inc. Contribution data via <a href="https://github.com/grubersjoe/github-contributions-api" target="_blank" rel="noopener">github-contributions-api</a>.</p>
+    <p><a href="https://github.com/hjorven/gridscape" target="_blank" rel="noopener">Source on GitHub</a> · No cookies, no tracking.</p>
+  </footer>
+
+  <noscript><p class="noscript">Gridscape needs JavaScript to render your skyline.</p></noscript>
+</body>
+</html>

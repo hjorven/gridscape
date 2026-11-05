@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://hjorven.github.io/gridscape/sitemap.xml
