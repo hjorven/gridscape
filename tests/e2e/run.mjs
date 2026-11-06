@@ -69,7 +69,8 @@ function router(mode, log) {
   return async (route) => {
     const url = route.request().url();
     const u = new URL(url);
-    if (url.startsWith('https://cdn.jsdelivr.net/npm/') && LOCAL_CDN) {
+    if (url.startsWith('https://cdn.jsdelivr.net/npm/')) {
+      if (!LOCAL_CDN) return route.continue(); // real CDN (CI has network access)
       const m = url.match(/npm\/(three|gifenc)@[^/]+\/(.*)$/);
       const file = m && path.join(LOCAL_CDN, m[1], m[2].split('?')[0]);
       if (file && fs.existsSync(file)) return route.fulfill({ status: 200, body: fs.readFileSync(file), headers: { ...CORS, 'content-type': 'text/javascript' } });
