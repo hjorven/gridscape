@@ -3,6 +3,7 @@ import { formatNumber } from './stats.js';
 
 const W = 1200;
 const H = 630;
+const FONT = '-apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif';
 
 function loadImage(src, timeout = 5000) {
   return new Promise((resolve) => {
@@ -46,7 +47,7 @@ function fitText(ctx, text, maxWidth, font, startSize, minSize = 18) {
   return size;
 }
 
-export async function buildShareCard({ profile, stats, rangeLabel, palette, sceneCanvas, siteLabel }) {
+export async function buildShareCard({ profile, stats, rangeLabel, palette, sceneCanvas, siteLabel, achievements = [], compare = null }) {
   const canvas = document.createElement('canvas');
   canvas.width = W;
   canvas.height = H;
@@ -67,6 +68,15 @@ export async function buildShareCard({ profile, stats, rangeLabel, palette, scen
     ctx.fillRect(380, 0, 260, H);
   }
 
+  if (compare) {
+    drawCompare(ctx, { profile, stats, palette, compare, rangeLabel });
+    ctx.fillStyle = palette.muted;
+    ctx.font = `600 18px ${FONT}`;
+    ctx.textAlign = 'left';
+    ctx.fillText(siteLabel, 60, H - 48);
+    return canvas;
+  }
+
   // Avatar
   const avatarSrc = profile.avatar ? `${profile.avatar}${profile.avatar.includes('?') ? '&' : '?'}s=192` : null;
   const avatar = await loadImage(avatarSrc);
@@ -84,7 +94,7 @@ export async function buildShareCard({ profile, stats, rangeLabel, palette, scen
     ctx.fillStyle = palette.levels[2];
     ctx.fillRect(ax, ay, ar * 2, ar * 2);
     ctx.fillStyle = palette.text;
-    ctx.font = '700 40px -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif';
+    ctx.font = `700 40px ${FONT}`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText(profile.login.slice(0, 1).toUpperCase(), ax + ar, ay + ar + 2);
@@ -135,12 +145,64 @@ export async function buildShareCard({ profile, stats, rangeLabel, palette, scen
     ctx.fillText(labelText, x + 14, y + 74);
   });
 
+  // Achievements (up to three)
+  const earned = achievements.filter((a) => a.earned).slice(0, 3);
+  let ax2 = 60;
+  for (const a of earned) {
+    ctx.font = `600 15px ${FONT}`;
+    const w = ctx.measureText(a.title).width + 52;
+    if (ax2 + w > 470) break;
+    ctx.fillStyle = palette.base;
+    roundRect(ctx, ax2, 512, w, 34, 17);
+    ctx.fill();
+    ctx.fillStyle = palette.levels[3];
+    ctx.beginPath();
+    ctx.arc(ax2 + 17, 529, 12, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#ffffff';
+    ctx.textAlign = 'center';
+    ctx.font = `800 ${a.icon.length > 2 ? 9 : 11}px ${FONT}`;
+    ctx.fillText(a.icon, ax2 + 17, 533);
+    ctx.textAlign = 'left';
+    ctx.fillStyle = palette.text;
+    ctx.font = `600 15px ${FONT}`;
+    ctx.fillText(a.title, ax2 + 36, 534);
+    ax2 += w + 8;
+  }
+
   // Footer
   ctx.fillStyle = palette.muted;
-  ctx.font = '600 18px ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace';
-  ctx.fillText(siteLabel, 60, H - 48);
+  ctx.font = `600 18px ${FONT}`;
+  ctx.fillText(siteLabel, 60, H - 40);
 
   return canvas;
+}
+
+function drawCompare(ctx, { profile, stats, palette, compare, rangeLabel }) {
+  const rows = [
+    { p: profile, s: stats, pal: palette },
+    { p: compare.profile, s: compare.stats, pal: compare.palette },
+  ];
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'alphabetic';
+  rows.forEach((r, i) => {
+    const y = 90 + i * 230;
+    ctx.fillStyle = r.pal.levels[4];
+    roundRect(ctx, 60, y, 8, 150, 4);
+    ctx.fill();
+    ctx.fillStyle = palette.muted;
+    ctx.font = `500 22px ${FONT}`;
+    ctx.fillText(`@${r.p.login}`, 90, y + 30);
+    ctx.fillStyle = palette.text;
+    fitText(ctx, formatNumber(r.s.total), 320, (sz) => `700 ${sz}px ${FONT}`, 76, 36);
+    ctx.fillText(formatNumber(r.s.total), 86, y + 104);
+    ctx.fillStyle = palette.muted;
+    ctx.font = `500 17px ${FONT}`;
+    ctx.fillText(`${r.s.longest}d streak · best day ${r.s.best ? r.s.best.count : 0}`, 90, y + 140);
+  });
+  ctx.fillStyle = palette.muted;
+  ctx.font = `600 20px ${FONT}`;
+  ctx.fillText(`vs · ${rangeLabel}`, 90, 300);
 }
 
 export function canvasToBlob(canvas) {
@@ -213,9 +275,22 @@ export function socialLinks({ url, text }) {
   };
 }
 
-export function badgeMarkdown(url, accentHex) {
-  const color = accentHex.replace('#', '');
-  const img = `https://img.shields.io/badge/my_GitHub-in_3D-${color}?style=for-the-badge&logo=github&logoColor=white&labelColor=0d1117`;
-  return { img, md: `[![My GitHub in 3D](${img})](${url})` };
+/**
+ * README snippets. With the worker: a live badge and a card with a mini skyline that update
+ * automatically. Without it: a static shields.io badge.
+ */
+export function readmeEmbeds({ pageUrl, user, workerUrl, theme = 'dark' }) {
+  const w = (workerUrl || '').replace(/\/+$/, '');
+  if (!w) {
+    const img = 'https://img.shields.io/badge/my_GitHub-in_3D-39d353?style=for-the-badge&logo=github&logoColor=white&labelColor=0d1117';
+    return [{ id: 'badge', label: 'Badge', img, md: `[![My GitHub in 3D](${img})](${pageUrl})` }];
+  }
+  const t = theme === 'light' ? '?theme=light' : '';
+  const badge = `${w}/badge/${user}.svg${t}`;
+  const card = `${w}/card/${user}.svg${t}`;
+  return [
+    { id: 'badge', label: 'Live badge', img: badge, md: `[![${user}'s GitHub in 3D](${badge})](${pageUrl})` },
+    { id: 'card', label: 'Skyline card', img: card, md: `[![${user}'s GitHub skyline](${card})](${pageUrl})` },
+  ];
 }
 
