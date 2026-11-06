@@ -1,0 +1,16 @@
+name = "gridscape-api"
+main = "src/index.js"
+compatibility_date = "2026-10-01"
+workers_dev = true
+
+[vars]
+SITE_URL = "https://hjorven.github.io/gridscape/"
+
+# Fonts for the preview images are bundled as binary data
+[[rules]]
+type = "Data"
+globs = ["**/*.ttf"]
+fallthrough = true
+
+# Secret (not stored here): GITHUB_TOKEN — a fine-grained token with no extra permissions,
+# set with:  npx wrangler secret put GITHUB_TOKEN

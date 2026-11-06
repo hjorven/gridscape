@@ -6,68 +6,63 @@ Turn any GitHub profile into an interactive **3D contribution skyline** — and 
 
 ## Features
 
-- Enter a username, `@handle` or any `github.com/...` link
-- 3D skyline (Three.js): drag to rotate, pinch/scroll to zoom, hover/tap a day for details
-- Year switcher (last 12 months + every year with data), 7 color themes, 2D fallback
-- Stats: total, longest/current streak, best day, active days, favorite weekday, weekly rhythm
-- Top languages and most-starred repos
-- Sharing: deep links (`?user=...&year=...&theme=...`), 1200x630 share card PNG, 3D screenshot,
-  native share sheet on phones, X / Bluesky / LinkedIn / Reddit, README badge
-- Responsive (phone, tablet, desktop), light/dark mode, reduced-motion support, PWA manifest
-- SEO: meta + Open Graph + Twitter cards, JSON-LD, sitemap, robots.txt, custom 404
-- Security: Content-Security-Policy, all user data rendered as text (no `innerHTML`)
-- No backend, no build step, no cookies, no tracking
+- **3D skyline** in the style of GitHub Skyline: dark bevelled plinth, username and year raised on the front, month labels, original GitHub colors (follows light/dark mode)
+- **Night mode** with glowing buildings, auto-rotate, fullscreen, 2D fallback
+- **Compare mode:** two profiles side by side (`?vs=friend`), head-to-head table
+- **Year in review:** tap-through story (biggest month, longest streak, favorite day, top language, achievements), every slide saveable as 1080x1920
+- **12 achievements** (Centurion, 1k Club, Year-Round, Comeback, Star Maker …) with progress, shown on the share card
+- **Exports:** share card PNG, 3D view PNG, video (MP4/WebM, story/square/wide), animated GIF, **STL for 3D printing**
+- **Sharing:** links with a live preview image per profile, native share sheet, X / Bluesky / LinkedIn / Reddit, live README badge and skyline card
+- **Reliable data:** several sources per data type with automatic fallback (see below)
+- Responsive, PWA with service worker (installable, fast repeat visits), accessible, no cookies, no tracking
 
-## Data sources
+## Data sources and fallbacks
 
-| Data | Source | Limit |
-|---|---|---|
-| Contribution calendar | [github-contributions-api](https://github.com/grubersjoe/github-contributions-api) | cached ~1 h |
-| Profile, repos | GitHub REST API (unauthenticated) | 60 requests/hour per IP |
+The site tries each source in order and skips sources that failed in the last 5 minutes.
 
-Results are cached in `sessionStorage` for 10 minutes.
+| Data | 1. | 2. | 3. |
+|---|---|---|---|
+| Profile | Gridscape API (worker) | GitHub REST API | ungh.cc |
+| Repositories | Gridscape API (worker) | GitHub REST API | ungh.cc |
+| Contributions | Gridscape API (worker) | github-contributions-api | deno-github-contributions-api |
 
-## Run locally
+The worker itself has its own chain (GitHub GraphQL with token → public APIs → stale cache).
+The footer of the site shows which source was used. Without the worker the site still works.
 
-ES modules need a web server (opening `index.html` directly will not work):
+## Setup
+
+### GitHub Pages
+
+Already set up: `main` branch, root folder.
+
+### Optional: Gridscape API
+
+Gives per-profile preview images, the live README badge/card and removes rate limits.
+Step-by-step guide: [`worker/README.md`](worker/README.md).
+
+## Development
 
 ```bash
-cd gridscape
 python3 -m http.server 8000
 ```
 
-Then open http://localhost:8000
+Then open http://localhost:8000 (ES modules need a web server).
 
-## Deploy to GitHub Pages
-
-```bash
-cd gridscape
-git init
-git add .
-git commit -m "Initial commit: Gridscape"
-git branch -M main
-gh repo create gridscape --public --source=. --remote=origin --push
-gh api -X POST repos/hjorven/gridscape/pages -f "source[branch]=main" -f "source[path]=/"
-```
-
-Without the GitHub CLI: create a public repo `gridscape` on github.com, then
+Tests:
 
 ```bash
-git remote add origin https://github.com/hjorven/gridscape.git
-git push -u origin main
+npm install
+npx playwright install chromium
+npm test        # unit tests (stats, fallbacks, achievements, worker rendering)
+npm run e2e     # browser tests with mocked APIs, including all fallback scenarios
 ```
 
-and enable **Settings → Pages → Deploy from a branch → `main` / `/ (root)`**.
-
-### Different repo name or custom domain?
-
-The URL `https://hjorven.github.io/gridscape/` is hard-coded in `index.html` (canonical, Open Graph,
-JSON-LD), `robots.txt`, `sitemap.xml` and `404.html`. Search and replace it if you change it.
+Both run automatically on every push and pull request (GitHub Actions).
 
 ### Editing the import map
 
-`index.html` contains a CSP hash for the inline `<script type="importmap">`. If you change the import map
-(e.g. a new Three.js version), recompute the hash and replace the old `sha256-...` value:
+`index.html` contains a CSP hash for the inline `<script type="importmap">`. After changing it,
+recompute the hash and replace the old `sha256-...` value:
 
 ```bash
 python3 -c "import re,hashlib,base64;s=open('index.html').read();m=re.search(r'<script type=\"importmap\">(.*?)</script>',s,re.S);print('sha256-'+base64.b64encode(hashlib.sha256(m.group(1).encode()).digest()).decode())"
@@ -76,19 +71,26 @@ python3 -c "import re,hashlib,base64;s=open('index.html').read();m=re.search(r'<
 ## Project structure
 
 ```
-index.html            page, SEO tags, CSP, import map
-css/style.css         all styles (tokens, light/dark, responsive)
-js/app.js             UI controller, URL state, rendering
-js/api.js             data fetching, input parsing, caching
-js/stats.js           date ranges, grid layout, statistics
-js/scene.js           Three.js skyline (InstancedMesh, OrbitControls)
-js/share.js           share card, downloads, Web Share API, social links
-js/palettes.js        color themes
-assets/               favicon, app icons, og-image
-manifest.webmanifest  PWA manifest
-404.html, robots.txt, sitemap.xml, .nojekyll
+index.html              page, SEO tags, CSP, import map
+sw.js                   service worker
+css/style.css           styles (GitHub Primer colors, light/dark, responsive)
+js/app.js               UI controller
+js/config.js            worker URL
+js/sources.js           data sources, normalizers, fallback client
+js/api.js               caching, input parsing, background loading
+js/stats.js             date ranges, grid layout, statistics
+js/achievements.js      achievements
+js/scene.js             Three.js skyline (plinth, 3D text, night mode, compare, capture, STL)
+js/export.js            STL, video, GIF
+js/wrapped.js           year in review
+js/share.js             share card, README embeds, Web Share API
+assets/fonts/           DejaVu Sans Bold subset for the 3D text
+worker/                 Cloudflare Worker (API, preview images, badge)
+tests/unit/             node:test unit tests
+tests/e2e/              Playwright browser tests
+.github/workflows/      CI and worker deploy
 ```
 
 ## License
 
-MIT
+MIT. The 3D text and preview images use DejaVu fonts ([license](https://dejavu-fonts.github.io/License.html)).

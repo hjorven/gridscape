@@ -1,18 +1,14 @@
-// Data layer: GitHub REST API (profile, repos) + public contributions API.
-// Everything is public data, fetched directly from the browser — no backend needed.
+// Data layer used by the app: input parsing, caching and the multi-source fallback chain.
+import { WORKER_URL } from './config.js';
+import { ApiError, buildSources, createClient, normalizeDays, totalsFromDays } from './sources.js';
 
-const GH = 'https://api.github.com';
-const CONTRIB = 'https://github-contributions-api.jogruber.de/v4';
-const CACHE_TTL = 10 * 60 * 1000; // 10 minutes
+export { ApiError };
 
+const CACHE_TTL = 10 * 60 * 1000;
 const USERNAME_RE = /^[a-z\d](?:[a-z\d]|-(?=[a-z\d])){0,38}$/i;
 
-export class ApiError extends Error {
-  constructor(message, code) {
-    super(message);
-    this.code = code;
-  }
-}
+const sources = buildSources(WORKER_URL);
+const client = createClient();
 
 /** Accepts "user", "@user", "github.com/user", "https://github.com/user/repo?x" and returns "user" or null. */
 export function parseUsername(raw) {
@@ -49,101 +45,79 @@ function cacheGet(key) {
 function cacheSet(key, value) {
   try {
     sessionStorage.setItem(key, JSON.stringify({ t: Date.now(), v: value }));
-  } catch {
-    /* storage full or blocked — ignore */
-  }
+  } catch { /* storage full or blocked */ }
 }
 
-async function getJSON(url, { signal } = {}) {
-  let res;
-  try {
-    res = await fetch(url, { signal, headers: { Accept: 'application/json' } });
-  } catch (err) {
-    if (err.name === 'AbortError') throw err;
-    throw new ApiError('Network error — check your connection and try again.', 'network');
-  }
-  if (res.status === 404) throw new ApiError('That GitHub user does not exist.', 'not_found');
-  if (res.status === 403 || res.status === 429) {
-    const reset = Number(res.headers.get('x-ratelimit-reset'));
-    const mins = reset ? Math.max(1, Math.ceil((reset * 1000 - Date.now()) / 60000)) : null;
-    throw new ApiError(
-      `GitHub API rate limit reached${mins ? ` — try again in about ${mins} min` : ''}.`,
-      'rate_limit'
-    );
-  }
-  if (!res.ok) throw new ApiError(`Request failed (${res.status}).`, 'http');
-  return res.json();
-}
-
-export async function fetchProfile(user, opts) {
-  const key = `gs:profile:${user.toLowerCase()}`;
+async function cached(kind, user, fn) {
+  const key = `gs2:${kind}:${user.toLowerCase()}`;
   const hit = cacheGet(key);
   if (hit) return hit;
-  const p = await getJSON(`${GH}/users/${encodeURIComponent(user)}`, opts);
-  const profile = {
-    login: p.login,
-    name: p.name || p.login,
-    avatar: p.avatar_url,
-    bio: p.bio || '',
-    url: p.html_url,
-    followers: p.followers,
-    following: p.following,
-    publicRepos: p.public_repos,
-    location: p.location || '',
-    blog: p.blog || '',
-    createdAt: p.created_at,
-    type: p.type,
+  const value = await fn();
+  cacheSet(key, value);
+  return value;
+}
+
+export function fetchProfile(user, { signal } = {}) {
+  return cached('profile', user, async () => {
+    const { value, source } = await client.run(sources.profile, user, { signal, notFoundIsFinal: true });
+    return { ...value, _source: source.name };
+  });
+}
+
+export async function fetchRepos(user, { signal } = {}) {
+  try {
+    return await cached('repos', user, async () => {
+      const { value, source } = await client.run(sources.repos, user, { signal });
+      return { list: value, source: source.name, partial: source.name === 'ungh.cc' };
+    });
+  } catch (err) {
+    if (err.name === 'AbortError' || (signal && signal.aborted)) throw err;
+    return { error: err.code === 'not_found' ? 'No repositories found.' : 'Repositories are unavailable right now.' };
+  }
+}
+
+/**
+ * Loads the contribution calendar. Returns
+ *   { contributions, totals, source, complete, loadRest(onProgress) }
+ * When the winning source cannot return all years at once, `loadRest` fetches the
+ * remaining years one by one (oldest data is loaded last).
+ */
+export async function fetchContributions(user, { signal, createdAt = null } = {}) {
+  const key = `gs2:contrib:${user.toLowerCase()}`;
+  const hit = cacheGet(key);
+  if (hit && hit.complete) return { ...hit, loadRest: async () => hit };
+
+  const { value, source } = await client.run(sources.contributions, user, { signal });
+  const result = {
+    contributions: value.days,
+    totals: value.totals,
+    source: source.name,
+    complete: value.complete,
   };
-  cacheSet(key, profile);
-  return profile;
-}
+  if (result.complete) cacheSet(key, result);
 
-export async function fetchContributions(user, opts) {
-  const key = `gs:contrib:${user.toLowerCase()}`;
-  const hit = cacheGet(key);
-  if (hit) return hit;
-  const data = await getJSON(`${CONTRIB}/${encodeURIComponent(user)}?y=all`, opts);
-  if (!data || !Array.isArray(data.contributions)) {
-    throw new ApiError('No contribution data found for this user.', 'empty');
-  }
-  const contributions = data.contributions
-    .filter((c) => c && typeof c.date === 'string')
-    .map((c) => ({ date: c.date, count: Number(c.count) || 0, level: Number(c.level) || 0 }))
-    .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
-  const totals = {};
-  for (const [k, v] of Object.entries(data.total || {})) {
-    if (/^\d{4}$/.test(k)) totals[k] = Number(v) || 0;
-  }
-  const result = { contributions, totals };
-  cacheSet(key, result);
+  result.loadRest = async (onProgress, createdAtLater = null) => {
+    if (result.complete || !source.rangeUrl) return result;
+    const thisYear = new Date().getFullYear();
+    const created = createdAtLater || createdAt;
+    const firstYear = Math.max(2008, created ? Number(String(created).slice(0, 4)) : thisYear - 4);
+    const all = new Map(result.contributions.map((d) => [d.date, d]));
+    for (let y = thisYear; y >= firstYear; y--) {
+      if (signal && signal.aborted) return result;
+      try {
+        const part = await client.fetchRange(source, user, `${y}-01-01`, `${y}-12-31`, signal);
+        for (const d of part.days) all.set(d.date, d);
+      } catch (err) {
+        if (signal && signal.aborted) return result;
+        // One year failing is not fatal; keep what we have.
+      }
+      result.contributions = normalizeDays([...all.values()]);
+      result.totals = totalsFromDays(result.contributions);
+      onProgress?.(result);
+    }
+    result.complete = true;
+    cacheSet(key, { contributions: result.contributions, totals: result.totals, source: result.source, complete: true });
+    return result;
+  };
   return result;
-}
-
-/** Repos are optional: if the API is rate limited we just return null. */
-export async function fetchRepos(user, opts) {
-  const key = `gs:repos:${user.toLowerCase()}`;
-  const hit = cacheGet(key);
-  if (hit) return hit;
-  try {
-    const list = await getJSON(
-      `${GH}/users/${encodeURIComponent(user)}/repos?per_page=100&sort=pushed&type=owner`,
-      opts
-    );
-    const repos = (Array.isArray(list) ? list : [])
-      .filter((r) => !r.fork)
-      .map((r) => ({
-        name: r.name,
-        url: r.html_url,
-        description: r.description || '',
-        stars: r.stargazers_count || 0,
-        forks: r.forks_count || 0,
-        language: r.language || null,
-        size: r.size || 0,
-      }));
-    cacheSet(key, repos);
-    return repos;
-  } catch (err) {
-    if (err.name === 'AbortError') throw err;
-    return { error: err.message };
-  }
 }
